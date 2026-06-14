@@ -1,0 +1,3 @@
+Flask==3.0.0
+pyjsparser==2.7.1
+gunicorn==21.2.0
