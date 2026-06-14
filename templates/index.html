@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JS Engine — Custom Python Runtime</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['JetBrains Mono', 'monospace'],
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            bg:      '#0d0f14',
+            panel:   '#13161e',
+            border:  '#1e2330',
+            accent:  '#7c6af7',
+            accentd: '#5b4de0',
+            green:   '#3dd68c',
+            red:     '#f87171',
+            muted:   '#4a5068',
+            text:    '#c8cde0',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #0d0f14; }
+    textarea { resize: none; }
+    textarea:focus { outline: none; }
+    #code-input::selection { background: #7c6af730; }
+
+    /* thin scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e2330; border-radius: 99px; }
+
+    .run-btn {
+      background: linear-gradient(135deg, #7c6af7 0%, #5b4de0 100%);
+      transition: filter 0.15s, transform 0.1s;
+    }
+    .run-btn:hover  { filter: brightness(1.15); }
+    .run-btn:active { transform: scale(0.97); }
+    .run-btn:disabled { filter: brightness(0.5); cursor: not-allowed; }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .cursor::after {
+      content: '▊';
+      animation: blink 1s step-end infinite;
+      color: #7c6af7;
+      margin-left: 1px;
+    }
+
+    .line-nums {
+      counter-reset: line;
+    }
+    .line-num-item::before {
+      counter-increment: line;
+      content: counter(line);
+    }
+
+    #output-box {
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .badge {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="font-sans text-text h-screen flex flex-col overflow-hidden">
+
+  <!-- Header -->
+  <header class="flex items-center justify-between px-6 py-3 border-b border-border flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-7 h-7 rounded-lg flex items-center justify-center" style="background:linear-gradient(135deg,#7c6af7,#3dd68c)">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          <path d="M2 4l4 4-4 4M8 12h6" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="font-mono font-bold text-sm tracking-wide text-white">JS<span class="text-accent">Engine</span></span>
+      <span class="badge bg-border text-muted uppercase">Python Runtime</span>
+    </div>
+    <div class="flex items-center gap-2 text-xs text-muted font-mono">
+      <span id="status-dot" class="w-2 h-2 rounded-full bg-green inline-block"></span>
+      <span id="status-text">Ready</span>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="flex flex-1 gap-0 overflow-hidden">
+
+    <!-- Left: Editor -->
+    <section class="flex flex-col flex-1 border-r border-border overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-border flex-shrink-0">
+        <div class="flex items-center gap-2 text-xs font-mono text-muted">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2" stroke="#4a5068" stroke-width="1.4"/><path d="M4 5l3 3-3 3M8 11h4" stroke="#4a5068" stroke-width="1.4" stroke-linecap="round"/></svg>
+          script.js
+        </div>
+        <div class="flex gap-1.5">
+          <div class="w-3 h-3 rounded-full bg-red opacity-60"></div>
+          <div class="w-3 h-3 rounded-full bg-yellow-400 opacity-60"></div>
+          <div class="w-3 h-3 rounded-full bg-green opacity-60"></div>
+        </div>
+      </div>
+      <textarea
+        id="code-input"
+        class="flex-1 w-full bg-panel font-mono text-sm text-text px-6 py-5 leading-7 border-none"
+        spellcheck="false"
+        autocorrect="off"
+        autocapitalize="off"
+      >// ── Stress Test: Arrays, Map, Filter, Reduce ──────────────
+const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+// Filter evens, double them, then sum
+const result = numbers
+  .filter(n => n % 2 === 0)
+  .map(n => n * 2)
+  .reduce((acc, n) => acc + n, 0);
+
+console.log("Even numbers doubled and summed:", result);
+
+// ── String operations ──────────────────────────────────────
+const words = ["hello", "world", "from", "python", "engine"];
+const shout = words.map(w => w.toUpperCase()).join(" | ");
+console.log(shout);
+
+// ── Object manipulation ────────────────────────────────────
+const people = [
+  { name: "Alice", age: 30 },
+  { name: "Bob",   age: 17 },
+  { name: "Carol", age: 25 }
+];
+
+const adults = people
+  .filter(p => p.age >= 18)
+  .map(p => p.name + " (" + p.age + ")");
+
+console.log("Adults:", adults.join(", "));
+
+// ── Fibonacci ─────────────────────────────────────────────
+function fib(n) {
+  if (n <= 1) return n;
+  return fib(n - 1) + fib(n - 2);
+}
+console.log("Fib(10):", fib(10));
+
+// ── Math ─────────────────────────────────────────────────
+console.log("2^10 =", Math.pow(2, 10));
+console.log("Max:", Math.max(42, 17, 99, 3));
+</textarea>
+    </section>
+
+    <!-- Right: Output -->
+    <section class="flex flex-col w-5/12 overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-border flex-shrink-0">
+        <div class="flex items-center gap-2 text-xs font-mono text-muted">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M1 8h9M1 13h6" stroke="#4a5068" stroke-width="1.4" stroke-linecap="round"/></svg>
+          stdout
+        </div>
+        <button
+          id="clear-btn"
+          onclick="clearOutput()"
+          class="text-xs font-mono text-muted hover:text-text transition-colors"
+        >clear</button>
+      </div>
+
+      <!-- Output terminal -->
+      <div class="flex-1 overflow-y-auto bg-panel p-5">
+        <div id="output-box" class="font-mono text-sm leading-7 text-green cursor">
+          <span class="text-muted">// Output will appear here after you run your code.</span>
+        </div>
+      </div>
+
+      <!-- Run button -->
+      <div class="p-4 border-t border-border flex-shrink-0">
+        <button
+          id="run-btn"
+          onclick="runCode()"
+          class="run-btn w-full py-3 rounded-lg font-mono font-bold text-sm text-white tracking-widest uppercase flex items-center justify-center gap-2"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M4 2l10 6-10 6V2z" fill="white"/>
+          </svg>
+          <span id="btn-label">Run Code</span>
+        </button>
+        <p class="text-center text-xs text-muted font-mono mt-2">
+          <kbd class="bg-border px-1.5 py-0.5 rounded text-xs">Ctrl</kbd>+<kbd class="bg-border px-1.5 py-0.5 rounded text-xs">Enter</kbd> to run
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const outputBox = document.getElementById("output-box");
+    const runBtn    = document.getElementById("run-btn");
+    const btnLabel  = document.getElementById("btn-label");
+    const statusDot = document.getElementById("status-dot");
+    const statusTxt = document.getElementById("status-text");
+
+    function setStatus(state) {
+      const map = {
+        ready:    { dot: "bg-green",  text: "Ready" },
+        running:  { dot: "bg-yellow-400 animate-pulse", text: "Executing…" },
+        error:    { dot: "bg-red",    text: "Error" },
+        done:     { dot: "bg-green",  text: "Done" },
+      };
+      const s = map[state] || map.ready;
+      statusDot.className = `w-2 h-2 rounded-full inline-block ${s.dot}`;
+      statusTxt.textContent = s.text;
+    }
+
+    function clearOutput() {
+      outputBox.textContent = "";
+      outputBox.className = "font-mono text-sm leading-7 text-green cursor";
+      setStatus("ready");
+    }
+
+    async function runCode() {
+      const code = document.getElementById("code-input").value.trim();
+      if (!code) return;
+
+      // Loading state
+      runBtn.disabled = true;
+      btnLabel.textContent = "Executing…";
+      outputBox.className = "font-mono text-sm leading-7 text-muted";
+      outputBox.textContent = "Running…";
+      setStatus("running");
+
+      try {
+        const res = await fetch("/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        });
+
+        const data = await res.json();
+        const isError = data.output && data.output.startsWith("Error:");
+
+        outputBox.className = `font-mono text-sm leading-7 cursor ${isError ? "text-red" : "text-green"}`;
+        outputBox.textContent = data.output ?? "(no output)";
+        setStatus(isError ? "error" : "done");
+
+      } catch (err) {
+        outputBox.className = "font-mono text-sm leading-7 text-red cursor";
+        outputBox.textContent = "Network error: could not reach the server.\n" + err;
+        setStatus("error");
+      } finally {
+        runBtn.disabled = false;
+        btnLabel.textContent = "Run Code";
+      }
+
+      // Scroll output to top
+      outputBox.parentElement.scrollTop = 0;
+    }
+
+    // Ctrl+Enter shortcut
+    document.getElementById("code-input").addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        runCode();
+      }
+    });
+
+    // Tab key inserts spaces in the editor
+    document.getElementById("code-input").addEventListener("keydown", (e) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const el = e.target;
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        el.value = el.value.substring(0, start) + "  " + el.value.substring(end);
+        el.selectionStart = el.selectionEnd = start + 2;
+      }
+    });
+  </script>
+</body>
+</html>
